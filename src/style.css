@@ -1,0 +1,28 @@
+:root {
+  --bg: #05060c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: #e6e9f5;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  /* Rendered at device-pixel resolution; see engine/canvas.ts */
+  cursor: crosshair;
+}

@@ -17,6 +17,8 @@ export const COLORS = {
 export const SHIP = {
   radius: 13,
   turnSpeed: 3.8,
+  /** Touch steering aims at an absolute heading, so it may turn a bit faster. */
+  touchTurnBoost: 1.4,
   thrust: 420,
   /** Velocity retained per second (exponential drag). */
   drag: 0.55,

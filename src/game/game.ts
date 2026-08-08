@@ -1,7 +1,7 @@
 import { Audio } from '../engine/audio'
 import type { Viewport } from '../engine/canvas'
 import type { Input } from '../engine/input'
-import { clamp, pick, rand, randInt, TAU } from '../engine/math'
+import { angleDelta, clamp, pick, rand, randInt, TAU } from '../engine/math'
 import { BULLET, COLORS, RULES, SHIP, WORLD_HEIGHT, WORLD_WIDTH } from './constants'
 import {
   bodiesOverlap,
@@ -26,6 +26,7 @@ import {
   drawStarfield,
   drawText,
 } from './render'
+import { TouchControls } from './touch'
 
 type Phase = 'title' | 'playing' | 'dying' | 'gameover'
 
@@ -43,6 +44,7 @@ export class Game {
   private readonly ctx: CanvasRenderingContext2D
   private readonly audio = new Audio()
   private readonly stars = createStarfield(140)
+  private readonly touch = new TouchControls()
 
   private phase: Phase = 'title'
   private paused = false
@@ -121,9 +123,17 @@ export class Game {
 
   update(dt: number): void {
     if (this.input.interacted) this.audio.unlock()
-    if (this.input.wasPressed(...KEYS.mute)) this.audio.toggleMute()
 
-    if (this.phase === 'playing' && this.input.wasPressed(...KEYS.pause)) {
+    // Buttons stay live while paused so a touch player can resume.
+    this.touch.update(
+      this.input,
+      this.phase === 'playing' && !this.paused,
+      this.phase === 'playing' || this.phase === 'dying',
+    )
+
+    if (this.input.wasPressed(...KEYS.mute) || this.touch.mutePressed) this.audio.toggleMute()
+
+    if (this.phase === 'playing' && (this.input.wasPressed(...KEYS.pause) || this.touch.pausePressed)) {
       this.paused = !this.paused
     }
 
@@ -168,10 +178,18 @@ export class Game {
     const ship = this.ship
     const input = this.input
 
-    if (input.isDown(...KEYS.left)) ship.angle -= SHIP.turnSpeed * dt
-    if (input.isDown(...KEYS.right)) ship.angle += SHIP.turnSpeed * dt
+    const steer = this.touch.steer
+    if (steer.active) {
+      // The stick sets an absolute heading; the ship still has to turn to it,
+      // so touch and keyboard handling feel the same.
+      const step = SHIP.turnSpeed * SHIP.touchTurnBoost * dt
+      ship.angle += clamp(angleDelta(ship.angle, steer.angle), -step, step)
+    } else {
+      if (input.isDown(...KEYS.left)) ship.angle -= SHIP.turnSpeed * dt
+      if (input.isDown(...KEYS.right)) ship.angle += SHIP.turnSpeed * dt
+    }
 
-    ship.thrusting = input.isDown(...KEYS.thrust)
+    ship.thrusting = input.isDown(...KEYS.thrust) || steer.magnitude > 0.3
     if (ship.thrusting) {
       ship.vx += Math.cos(ship.angle) * SHIP.thrust * dt
       ship.vy += Math.sin(ship.angle) * SHIP.thrust * dt
@@ -194,7 +212,9 @@ export class Game {
     ship.invulnerable = Math.max(0, ship.invulnerable - dt)
     ship.cooldown = Math.max(0, ship.cooldown - dt)
 
-    const firing = input.isDown(...KEYS.fire) || input.pointerDown
+    // On touch only the right-hand fire zone shoots; with a mouse, any click does.
+    const firing =
+      input.isDown(...KEYS.fire) || this.touch.firing || (input.pointerDown && !input.hasTouch)
     if (firing && ship.cooldown === 0 && this.bullets.length < BULLET.max) {
       this.fire()
     }
@@ -406,6 +426,11 @@ export class Game {
     ctx.restore()
 
     this.drawHud()
+
+    // Drawn last so the stick and buttons stay readable over the pause dim.
+    if (this.input.hasTouch && (this.phase === 'playing' || this.phase === 'dying')) {
+      this.touch.render(ctx, this.paused, this.audio.muted)
+    }
   }
 
   private drawHud(): void {
@@ -414,17 +439,39 @@ export class Game {
     if (this.phase === 'title') {
       this.dim(0.55)
       drawText(ctx, 'VIBE ONE', WORLD_WIDTH * 0.5, 280, 86, COLORS.ship, 'center')
-      drawText(ctx, 'press SPACE or click to fly', WORLD_WIDTH * 0.5, 340, 22, COLORS.text, 'center')
-      drawText(
-        ctx,
-        'A / D or  ← →  turn      W or ↑  thrust      SPACE / click  fire',
-        WORLD_WIDTH * 0.5,
-        420,
-        18,
-        COLORS.dim,
-        'center',
-      )
-      drawText(ctx, 'P pause      M mute', WORLD_WIDTH * 0.5, 450, 18, COLORS.dim, 'center')
+
+      if (this.input.hasTouch) {
+        drawText(ctx, 'tap to fly', WORLD_WIDTH * 0.5, 340, 22, COLORS.text, 'center')
+        drawText(
+          ctx,
+          'drag the left side to steer      hold the right side to fire',
+          WORLD_WIDTH * 0.5,
+          420,
+          18,
+          COLORS.dim,
+          'center',
+        )
+      } else {
+        drawText(
+          ctx,
+          'press SPACE or click to fly',
+          WORLD_WIDTH * 0.5,
+          340,
+          22,
+          COLORS.text,
+          'center',
+        )
+        drawText(
+          ctx,
+          'A / D or  ← →  turn      W or ↑  thrust      SPACE / click  fire',
+          WORLD_WIDTH * 0.5,
+          420,
+          18,
+          COLORS.dim,
+          'center',
+        )
+        drawText(ctx, 'P pause      M mute', WORLD_WIDTH * 0.5, 450, 18, COLORS.dim, 'center')
+      }
       if (this.best > 0) {
         drawText(ctx, `best ${this.best}`, WORLD_WIDTH * 0.5, 510, 20, COLORS.dim, 'center')
       }
@@ -439,7 +486,7 @@ export class Game {
       drawLifeIcon(ctx, 40 + i * 26, 86)
     }
 
-    if (this.audio.muted) {
+    if (this.audio.muted && !this.input.hasTouch) {
       drawText(ctx, 'muted', 28, WORLD_HEIGHT - 24, 16, COLORS.dim)
     }
 
@@ -448,7 +495,7 @@ export class Game {
       drawText(ctx, 'PAUSED', WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.5, 60, COLORS.text, 'center')
       drawText(
         ctx,
-        'press P to resume',
+        this.input.hasTouch ? 'tap play to resume' : 'press P to resume',
         WORLD_WIDTH * 0.5,
         WORLD_HEIGHT * 0.5 + 44,
         20,

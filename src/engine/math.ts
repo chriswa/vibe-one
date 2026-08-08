@@ -28,6 +28,14 @@ export function pick<T>(items: readonly T[]): T {
   return items[randInt(0, items.length)] as T
 }
 
+/** Shortest signed rotation from angle `a` to angle `b`, in (-PI, PI]. */
+export function angleDelta(a: number, b: number): number {
+  let d = (b - a) % TAU
+  if (d > Math.PI) d -= TAU
+  else if (d < -Math.PI) d += TAU
+  return d
+}
+
 /**
  * Shortest signed delta between two coordinates on a wrapping axis, i.e. the
  * offset you add to `a` to land on `b` going the short way around.

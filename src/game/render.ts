@@ -32,7 +32,7 @@ export function drawWrapped(
   }
 }
 
-function neonStroke(ctx: Ctx, color: string, width: number, glow: number): void {
+export function neonStroke(ctx: Ctx, color: string, width: number, glow: number): void {
   ctx.strokeStyle = color
   ctx.lineWidth = width
   ctx.lineJoin = 'round'

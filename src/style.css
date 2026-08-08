@@ -25,4 +25,11 @@ body {
   height: 100vh;
   /* Rendered at device-pixel resolution; see engine/canvas.ts */
   cursor: crosshair;
+  /* Suppress scrolling, pinch-zoom, double-tap zoom and the tap flash so
+     drags and multi-touch reach the game instead of the browser. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }

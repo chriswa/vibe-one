@@ -9,18 +9,44 @@ const PREVENT_DEFAULT = new Set([
   'Tab',
 ])
 
+/** One live pointer (mouse button held, or a finger on the glass). */
+export interface PointerState {
+  readonly id: number
+  readonly isTouch: boolean
+  /** Where the press landed, in world units. Fixed for the pointer's life. */
+  readonly startX: number
+  readonly startY: number
+  /** Current position, in world units. */
+  x: number
+  y: number
+}
+
 /**
  * Keyboard + pointer state. `down` is level-triggered; `pressed` is
  * edge-triggered and cleared by `endFrame()` once per update tick.
+ *
+ * Multiple pointers are tracked by id so touch can steer with one thumb and
+ * fire with the other; `pointerX`/`pointerY`/`pointerDown` track the most
+ * recent pointer and are what the mouse path reads.
  */
 export class Input {
   private readonly down = new Set<string>()
   private readonly pressed = new Set<string>()
+  private readonly active = new Map<number, PointerState>()
+  /**
+   * Presses seen since the last tick. Kept separately from `active` because a
+   * fast tap can go down and up between two frames — polling live pointers
+   * would miss it entirely.
+   */
+  private readonly presses: PointerState[] = []
 
   pointerX = 0
   pointerY = 0
   pointerDown = false
   pointerPressed = false
+
+  /** Set once a touch pointer is seen; switches the game to the touch UI. */
+  hasTouch = false
 
   /** Set on the first real key/pointer interaction; gates audio startup. */
   interacted = false
@@ -43,34 +69,55 @@ export class Input {
     // Losing focus mid-keypress would otherwise leave a key stuck down.
     window.addEventListener('blur', () => {
       this.down.clear()
+      this.active.clear()
       this.pointerDown = false
     })
 
-    target.addEventListener('pointermove', (e) => this.movePointer(e))
+    target.addEventListener('pointermove', (e) => {
+      const x = this.viewport.toWorldX(e.clientX)
+      const y = this.viewport.toWorldY(e.clientY)
+      this.pointerX = x
+      this.pointerY = y
+      const pointer = this.active.get(e.pointerId)
+      if (pointer) {
+        pointer.x = x
+        pointer.y = y
+      }
+    })
 
     target.addEventListener('pointerdown', (e) => {
       target.setPointerCapture(e.pointerId)
-      this.movePointer(e)
+      const x = this.viewport.toWorldX(e.clientX)
+      const y = this.viewport.toWorldY(e.clientY)
+
+      if (e.pointerType === 'touch') this.hasTouch = true
+      const pointer: PointerState = {
+        id: e.pointerId,
+        isTouch: e.pointerType === 'touch',
+        startX: x,
+        startY: y,
+        x,
+        y,
+      }
+      this.active.set(e.pointerId, pointer)
+      this.presses.push(pointer)
+
+      this.pointerX = x
+      this.pointerY = y
       this.pointerDown = true
       this.pointerPressed = true
       this.interacted = true
     })
 
-    target.addEventListener('pointerup', (e) => {
+    const release = (e: PointerEvent): void => {
       if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId)
-      this.pointerDown = false
-    })
-
-    target.addEventListener('pointercancel', () => {
-      this.pointerDown = false
-    })
+      this.active.delete(e.pointerId)
+      this.pointerDown = this.active.size > 0
+    }
+    target.addEventListener('pointerup', release)
+    target.addEventListener('pointercancel', release)
 
     target.addEventListener('contextmenu', (e) => e.preventDefault())
-  }
-
-  private movePointer(e: PointerEvent): void {
-    this.pointerX = this.viewport.toWorldX(e.clientX)
-    this.pointerY = this.viewport.toWorldY(e.clientY)
   }
 
   isDown(...codes: string[]): boolean {
@@ -81,13 +128,22 @@ export class Input {
     return codes.some((code) => this.pressed.has(code))
   }
 
-  /** Any key or click this tick — used for "press anything to continue". */
-  anyPressed(): boolean {
-    return this.pressed.size > 0 || this.pointerPressed
+  pointers(): Iterable<PointerState> {
+    return this.active.values()
+  }
+
+  /** Pointers that went down since the last tick, released or not. */
+  pressedPointers(): readonly PointerState[] {
+    return this.presses
+  }
+
+  hasPointer(id: number): boolean {
+    return this.active.has(id)
   }
 
   endFrame(): void {
     this.pressed.clear()
     this.pointerPressed = false
+    this.presses.length = 0
   }
 }

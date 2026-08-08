@@ -6,13 +6,19 @@ A 2D canvas game built with TypeScript and Vite, deployed to GitHub Pages.
 
 ## Controls
 
-| Action | Keys |
-| --- | --- |
-| Turn | `A` / `D` or `←` / `→` |
-| Thrust | `W` or `↑` |
-| Fire | `Space` or click |
-| Pause | `P` or `Esc` |
-| Mute | `M` |
+| Action | Keyboard / mouse | Touch |
+| --- | --- | --- |
+| Turn | `A` / `D` or `←` / `→` | drag the left half — the ship turns toward your thumb |
+| Thrust | `W` or `↑` | push the stick past ~30% deflection |
+| Fire | `Space` or click | hold anywhere on the right half |
+| Pause | `P` or `Esc` | ⏸ button, bottom right |
+| Mute | `M` | 🔈 button, bottom right |
+
+The touch stick is floating: it springs to wherever your thumb lands rather
+than sitting in a fixed spot. Both thumbs work at once, so you can steer and
+fire together. The UI switches to touch hints and on-screen buttons the first
+time a touch pointer is seen, so a laptop with a touchscreen still gets the
+keyboard layout until it is actually touched.
 
 ## Development
 
@@ -50,7 +56,7 @@ src/
   main.ts            wires the pieces together and starts the loop
   engine/
     canvas.ts        letterboxed fixed-size viewport, DPI scaling
-    input.ts         keyboard + pointer state, level- and edge-triggered
+    input.ts         keyboard + multi-pointer state, level- and edge-triggered
     loop.ts          fixed-timestep update, decoupled render
     audio.ts         procedural Web Audio sound effects
     math.ts          scalar helpers and wrap-aware distance
@@ -58,6 +64,7 @@ src/
     constants.ts     world size and all gameplay tuning
     entities.ts      entity shapes, movement, collision tests
     render.ts        drawing primitives (neon strokes, wrapping, text)
+    touch.ts         floating steering stick, fire zone, on-screen buttons
     game.ts          state machine, spawning, collisions, HUD
 ```
 
